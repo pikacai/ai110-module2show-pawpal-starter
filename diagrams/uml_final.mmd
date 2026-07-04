@@ -1,0 +1,82 @@
+classDiagram
+    %% PawPal+ UML — FINAL, matched to pawpal_system.py after implementation.
+    %% Supports the three core user actions:
+    %% 1) Add a pet and owner profile
+    %% 2) Add a pet care task
+    %% 3) Generate and view today's plan
+    %%
+    %% Changes vs. the initial draft (diagrams/uml.mmd):
+    %%   - Scheduler grew the "smarter scheduling" methods added in Phase 3:
+    %%     sort_by_time, filter_by_pet, filter_by_status, detect_conflicts,
+    %%     mark_task_complete, plus private time helpers _parse_time/_format_time.
+    %%   - Task gained next_occurrence() to support recurring tasks.
+
+    class Owner {
+        +string name
+        +dict preferences
+        +list~Pet~ pets
+        +add_pet(pet Pet) void
+        +get_preferences() dict
+        +get_all_tasks() list~Task~
+    }
+
+    class Pet {
+        +string name
+        +string species
+        +list~Task~ tasks
+        +add_task(task Task) void
+        +get_tasks() list~Task~
+    }
+
+    class Task {
+        +string title
+        +int duration_minutes
+        +string priority
+        +string pet_name
+        +string frequency
+        +bool completed
+        +string time
+        +date due_date
+        +__repr__() string
+        +mark_complete() void
+        +next_occurrence() Task
+    }
+    note for Task "priority is one of: 'low','medium','high'; time is 'HH:MM'; frequency 'daily'/'weekly' recurs, else one-off"
+
+    class Scheduler {
+        +int available_minutes
+        +generate_plan(tasks list~Task~, preferences dict) DailyPlan
+        +sort_by_time(tasks list~Task~) list~Task~
+        +filter_by_pet(tasks list~Task~, pet_name string) list~Task~
+        +filter_by_status(tasks list~Task~, completed bool) list~Task~
+        +detect_conflicts(tasks list~Task~) list~string~
+        +mark_task_complete(task Task, tasks list~Task~) Task
+        -sort_by_priority(tasks list~Task~) list~Task~
+        -fits_in_remaining_time(task Task, remaining int) bool
+        -parse_time(hhmm string) int
+        -format_time(total_minutes int) string
+    }
+
+    class DailyPlan {
+        +list~ScheduledTask~ scheduled_items
+        +list~Task~ skipped_tasks
+        +list~string~ skip_reasons
+        +int total_minutes_used
+        +add_scheduled_task(item ScheduledTask) void
+        +add_skipped_task(task Task, reason string) void
+        +explain() string
+    }
+
+    class ScheduledTask {
+        +Task task
+        +string start_time
+        +string reasoning
+    }
+
+    Owner "1" --> "many" Pet : owns
+    Pet "1" --> "many" Task : has
+    Scheduler ..> Task : reads / completes
+    Scheduler ..> Owner : reads preferences
+    Scheduler --> DailyPlan : creates
+    DailyPlan "1" --> "many" ScheduledTask : contains
+    ScheduledTask --> Task : references

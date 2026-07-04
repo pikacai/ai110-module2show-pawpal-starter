@@ -41,8 +41,27 @@ Yes. I asked my AI coding assistant to review the `pawpal_system.py` skeleton fo
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler weighs three constraints when building a `DailyPlan`:
+
+1. **Available time (a hard budget).** `Scheduler(available_minutes=...)` sets a
+   ceiling on the day. `generate_plan` tracks a `remaining` counter and only
+   places a task if `_fits_in_remaining_time` — otherwise it's recorded in
+   `skipped_tasks` with a reason. This is the one constraint that can never be
+   violated, so it's checked on every placement.
+2. **Priority (the ordering rule).** Before placing anything, `_sort_by_priority`
+   orders pending tasks high → medium → low via a numeric `_PRIORITY_RANK` map
+   (so "high" beats "low" numerically rather than alphabetically). Because the
+   budget is greedy, ordering *is* the decision: whatever sorts first gets first
+   claim on the remaining minutes.
+3. **Owner preferences (the starting point).** `preferences["day_start"]` sets
+   the clock the plan counts up from, so start times reflect when the owner
+   actually begins their day.
+
+I decided time mattered most because it's the constraint that makes the plan
+*honest* — a schedule that promises more than the day holds is useless. Priority
+came second as the fair way to resolve competition for that scarce time, and
+preferences last because they shape presentation (when the day starts) rather
+than what fits.
 
 **b. Tradeoffs**
 
@@ -69,13 +88,44 @@ app ever needed hard, back-to-back time blocking.
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+I used my AI coding assistant at three distinct stages, and deliberately kept
+them in **separate chat sessions** so each conversation stayed focused:
+
+- **Design review.** After sketching the UML, I asked the assistant to critique
+  the class skeleton for missing relationships and bottlenecks. This surfaced the
+  three gaps documented in section 1b (preferences never reaching the scheduler,
+  no `get_all_tasks()`, no `pet_name` back-reference).
+- **Implementation.** I used it to draft the small single-purpose methods on
+  `Scheduler` (sorting, filtering, conflict detection, recurrence) and to explain
+  Python idioms I was unsure about — e.g. why a `lambda` sort key over
+  minutes-past-midnight is safer than sorting `"HH:MM"` strings directly.
+- **Testing.** In a fresh session, I asked "what are the most important edge
+  cases for a pet scheduler with sorting and recurring tasks?" That produced the
+  edge-case list I turned into tests (empty task list, over-budget task,
+  completed-task exclusion, weekly rollover).
+
+The most helpful prompts were **specific and grounded in my actual files** —
+attaching `pawpal_system.py` and asking "what's missing to close the
+Owner → Pet → Task → Scheduler chain?" got far better answers than open-ended
+"how should I build a scheduler?" questions.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+The clearest moment I *didn't* accept a suggestion: the assistant recommended
+replacing `priority: str` with a proper `Enum` and computing start times from a
+real clock object. I rejected the enum change on purpose — for a lightweight
+personal planner, a plain string keeps the data classes trivial to construct in
+tests and in the UI, and the valid values are already enforced by the
+scheduler's sort logic (unknown priorities fall back to "medium" rank rather
+than crashing). I kept the design decision and documented the tradeoff instead
+of adding type-system ceremony.
+
+I verified AI output two ways: by **reading it before saving** (I had the
+assistant explain any test code I didn't fully understand, per the Phase 5
+workflow) and by **running `python -m pytest` and `python main.py`** to confirm
+behavior matched the explanation. When a suggested test and my logic disagreed,
+I traced which side was actually wrong rather than blindly "fixing" the code to
+match the test.
 
 ---
 
@@ -83,13 +133,42 @@ app ever needed hard, back-to-back time blocking.
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The suite in `tests/test_pawpal.py` (13 tests, all passing) covers:
+
+- **Data model** — `mark_complete()` flips status; `Pet.add_task()` grows the
+  list. These are the primitives everything else depends on.
+- **Sorting correctness** — `sort_by_time()` returns chronological order with
+  untimed tasks last, and `generate_plan()` places high-priority tasks first.
+  Sorting *is* the scheduling decision, so getting the order wrong silently
+  produces a wrong plan.
+- **Filtering** — by pet (case-insensitive) and by completion status.
+- **Conflict detection** — two tasks at one time yield exactly one warning;
+  distinct/untimed times yield none. This pins down the exact boundary of the
+  lightweight algorithm.
+- **Recurrence logic** — completing a daily task queues one due the next day, a
+  weekly task advances seven days, and one-off tasks don't recur. Recurrence
+  touches date math, which is easy to get subtly wrong.
+- **Budget edge cases** — an empty task list yields a valid empty plan (no
+  crash), a task larger than the whole day is skipped rather than scheduled, and
+  already-completed tasks are dropped before planning.
+
+These mattered because they target the places a scheduler *silently* misbehaves:
+wrong order, off-by-one date rollovers, and empty/over-budget inputs that a
+happy-path demo would never exercise.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+**★★★★☆ (4 / 5).** All 13 tests pass and exercise both the happy paths and the
+edges most likely to hide bugs. I hold back the fifth star for two reasons, both
+known and documented rather than untested: conflict detection compares only
+exact start times (not overlapping durations), and the Streamlit UI doesn't yet
+validate that a typed time is a well-formed `HH:MM`.
+
+If I had more time I'd add tests for: malformed time strings reaching
+`_parse_time`, back-to-back duration overlap (once interval-based conflict
+detection exists), a task whose duration is exactly the remaining budget
+(boundary), and multiple recurring tasks rolling forward together across several
+"complete" cycles.
 
 ---
 
@@ -97,12 +176,31 @@ app ever needed hard, back-to-back time blocking.
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+I'm most satisfied with the clean split between **data** (`Task`, `Pet`,
+`Owner`) and **behavior** (`Scheduler`). Because all the scheduling logic lives
+in small, single-purpose methods that take plain lists and return plain values,
+every algorithm was testable in isolation — I could verify sorting, conflict
+detection, and recurrence without ever standing up the Streamlit UI. That
+separation is also what let the UI stay thin: `app.py` just calls
+`sort_by_time`, `detect_conflicts`, and `generate_plan` and renders the results.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+The biggest redesign would be **interval-based conflict detection**: sort by
+start time and compare each task's `start + duration` against the next start, so
+a 30-minute walk at 08:00 correctly conflicts with a feeding at 08:15. I'd also
+give the scheduler a smarter fallback than greedy-by-priority — for example,
+trying to fit a lower-priority short task into leftover minutes that a skipped
+high-priority long task can't use. Finally, I'd add input validation and a
+"mark complete / show recurrence" control in the UI so the recurrence feature is
+visible to the end user, not just the CLI demo.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The most important thing I learned is that being the **lead architect** means
+owning the boundaries and the tradeoffs, not the typing. The AI was excellent at
+producing method bodies and spotting gaps, but the decisions that shaped the
+system — keeping `priority` a string, making conflict detection deliberately
+lightweight, treating time as a hard constraint and priority as the tiebreaker —
+were mine to make and defend. AI accelerates the *how*; the human still owns the
+*what* and *why*, and tests are how you hold both of you accountable.

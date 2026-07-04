@@ -80,13 +80,17 @@ else:
         selected_pet_name = st.selectbox("For which pet?", pet_names)
 
         task_title = st.text_input("Task title", value="Morning walk")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             duration = st.number_input(
                 "Duration (minutes)", min_value=1, max_value=240, value=20
             )
         with col2:
             priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+        with col3:
+            # Optional "HH:MM" preferred time — feeds sort_by_time and
+            # detect_conflicts below. Blank means "no fixed time".
+            task_time = st.text_input("Preferred time (HH:MM, optional)", value="")
 
         add_task_submitted = st.form_submit_button("Add task")
 
@@ -99,6 +103,7 @@ else:
                 title=task_title,
                 duration_minutes=int(duration),
                 priority=priority,
+                time=task_time.strip(),
             )
         )
         st.success(f"Added '{task_title}' for {selected_pet_name}.")
@@ -112,6 +117,7 @@ if all_tasks:
             {
                 "Pet": task.pet_name,
                 "Task": task.title,
+                "Time": task.time or "—",
                 "Minutes": task.duration_minutes,
                 "Priority": task.priority,
             }
@@ -130,12 +136,64 @@ available_minutes = st.number_input(
 )
 
 if st.button("Generate schedule"):
-    if not owner.get_all_tasks():
+    tasks = owner.get_all_tasks()
+    if not tasks:
         st.warning("No tasks to schedule yet. Add a pet and some tasks first.")
     else:
         scheduler = Scheduler(available_minutes=int(available_minutes))
-        plan = scheduler.generate_plan(
-            owner.get_all_tasks(), owner.get_preferences()
+
+        # --- Conflict warnings (Scheduler.detect_conflicts) --------------
+        # Surface any two tasks booked at the same clock time BEFORE the plan
+        # so the owner can spot the clash and adjust. One st.warning per slot
+        # keeps each conflict visually distinct.
+        conflicts = scheduler.detect_conflicts(tasks)
+        if conflicts:
+            for warning in conflicts:
+                st.warning(f"⚠️ {warning}")
+        else:
+            st.success("No time conflicts detected. 🎉")
+
+        # --- Today at a glance (Scheduler.sort_by_time) ------------------
+        # Show every task in chronological order (untimed tasks sort last) so
+        # the owner sees the shape of their day independent of the budget.
+        st.markdown("**Today at a glance** (sorted by time)")
+        st.table(
+            [
+                {
+                    "Time": task.time or "—",
+                    "Task": task.title,
+                    "Pet": task.pet_name,
+                    "Priority": task.priority,
+                    "Minutes": task.duration_minutes,
+                }
+                for task in scheduler.sort_by_time(tasks)
+            ]
         )
-        # plan.explain() returns a plain-text summary; show it in a code block.
-        st.text(plan.explain())
+
+        # --- The priority-fitted plan (Scheduler.generate_plan) ----------
+        plan = scheduler.generate_plan(tasks, owner.get_preferences())
+        st.success(
+            f"Scheduled {len(plan.scheduled_items)} task(s) using "
+            f"{plan.total_minutes_used} of {int(available_minutes)} available minutes."
+        )
+        if plan.scheduled_items:
+            st.table(
+                [
+                    {
+                        "Start": item.start_time,
+                        "Task": item.task.title,
+                        "Pet": item.task.pet_name,
+                        "Minutes": item.task.duration_minutes,
+                        "Why": item.reasoning,
+                    }
+                    for item in plan.scheduled_items
+                ]
+            )
+        # Tasks that didn't fit the budget: flag each so nothing silently vanishes.
+        for task, reason in zip(plan.skipped_tasks, plan.skip_reasons):
+            st.warning(f"Skipped **{task.title}** ({task.pet_name}) — {reason}")
+
+        # Keep the plain-text reasoning available for anyone who wants the
+        # full explanation in one copyable block.
+        with st.expander("Full text summary (plan.explain())"):
+            st.text(plan.explain())
