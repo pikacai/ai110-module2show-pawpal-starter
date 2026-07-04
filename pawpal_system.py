@@ -6,12 +6,17 @@ daily-planning engine for pet care.
 """
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import List, Optional
 
 # Lower rank = scheduled earlier. Used by Scheduler._sort_by_priority so that
 # priority is compared numerically instead of by the (nonsensical) alphabetical
 # ordering of the strings "high"/"low"/"medium".
 _PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
+
+# How far ahead a recurring task's next occurrence lands. timedelta does the
+# calendar math (month/year rollovers, leap days) correctly for us.
+_FREQUENCY_DELTAS = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 
 
 @dataclass
@@ -26,20 +31,47 @@ class Task:
     duration_minutes: int
     priority: str = "medium"  # one of: "low", "medium", "high"
     pet_name: str = ""  # which pet this task belongs to, so the plan can identify it
-    frequency: str = "daily"  # e.g. "daily", "weekly"
+    frequency: str = "daily"  # e.g. "daily", "weekly", "once"
     completed: bool = False  # completion status
+    time: str = ""  # preferred clock time "HH:MM"; "" means "no fixed time"
+    due_date: Optional[date] = None  # calendar day this task is due; None = today
 
     def __repr__(self) -> str:
         status = "done" if self.completed else "todo"
         owner = f" for {self.pet_name}" if self.pet_name else ""
+        when = f" @ {self.time}" if self.time else ""
         return (
-            f"Task({self.title!r}{owner}, {self.duration_minutes}min, "
+            f"Task({self.title!r}{owner}{when}, {self.duration_minutes}min, "
             f"{self.priority}, {self.frequency}, {status})"
         )
 
     def mark_complete(self) -> None:
         """Mark this task as done so the scheduler stops planning it."""
         self.completed = True
+
+    def next_occurrence(self) -> Optional["Task"]:
+        """Return a fresh, incomplete copy of this task for its next due date.
+
+        Only recurring tasks recur: if ``frequency`` is "daily" or "weekly",
+        this builds a new ``Task`` whose ``due_date`` is advanced by the matching
+        interval (``timedelta(days=1)`` or ``timedelta(weeks=1)``). The base date
+        is this task's ``due_date``, or today's date when none is set. One-off
+        tasks (any other frequency) return ``None``.
+        """
+        delta = _FREQUENCY_DELTAS.get(self.frequency.lower())
+        if delta is None:
+            return None
+        base = self.due_date or date.today()
+        return Task(
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            pet_name=self.pet_name,
+            frequency=self.frequency,
+            completed=False,
+            time=self.time,
+            due_date=base + delta,
+        )
 
 
 @dataclass
@@ -200,6 +232,81 @@ class Scheduler:
                 plan.add_skipped_task(task, reason)
 
         return plan
+
+    def sort_by_time(self, tasks: List[Task]) -> List[Task]:
+        """Return tasks ordered by their scheduled clock time (earliest first).
+
+        Times are "HH:MM" strings. Sorting them as raw strings happens to work
+        for zero-padded 24-hour times, but that's fragile; instead a ``lambda``
+        key converts each time to minutes-past-midnight (via ``_parse_time``) so
+        the comparison is genuinely numeric. Tasks with no set time ("") sort to
+        the end rather than jumping to 00:00. Stable, so same-time tasks keep
+        their insertion order.
+        """
+        end_of_day = 24 * 60 + 1  # sentinel: pushes unscheduled tasks last
+        return sorted(
+            tasks,
+            key=lambda task: self._parse_time(task.time) if task.time else end_of_day,
+        )
+
+    def filter_by_status(self, tasks: List[Task], completed: bool) -> List[Task]:
+        """Return only the tasks whose ``completed`` flag matches ``completed``.
+
+        ``filter_by_status(tasks, False)`` gives the still-to-do tasks;
+        ``True`` gives the finished ones.
+        """
+        return [task for task in tasks if task.completed == completed]
+
+    def filter_by_pet(self, tasks: List[Task], pet_name: str) -> List[Task]:
+        """Return only the tasks belonging to ``pet_name`` (case-insensitive)."""
+        needle = pet_name.strip().lower()
+        return [task for task in tasks if task.pet_name.lower() == needle]
+
+    def detect_conflicts(self, tasks: List[Task]) -> List[str]:
+        """Return warning strings for tasks that share the same clock time.
+
+        A deliberately *lightweight* strategy: it groups tasks by their exact
+        "HH:MM" ``time`` and flags any slot holding more than one task. It does
+        NOT model overlapping durations (a 30-min task at 08:00 does not
+        "conflict" with one at 08:15). Tasks with no set time are ignored.
+
+        Returns a (possibly empty) list of human-readable warnings instead of
+        raising, so callers can print them and keep going.
+        """
+        by_time: dict = {}
+        for task in tasks:
+            if not task.time:
+                continue
+            by_time.setdefault(task.time, []).append(task)
+
+        warnings: List[str] = []
+        for time_str in sorted(by_time):
+            group = by_time[time_str]
+            if len(group) > 1:
+                names = ", ".join(
+                    f"{t.title} ({t.pet_name})" if t.pet_name else t.title
+                    for t in group
+                )
+                warnings.append(f"Conflict at {time_str}: {names}")
+        return warnings
+
+    def mark_task_complete(
+        self, task: Task, tasks: Optional[List[Task]] = None
+    ) -> Optional[Task]:
+        """Mark ``task`` done and, if it recurs, spawn its next occurrence.
+
+        Delegates completion to ``task.mark_complete()`` and then asks the task
+        for its ``next_occurrence()``. For a "daily"/"weekly" task that returns a
+        fresh instance dated one interval later; for a one-off task it returns
+        ``None``. When a ``tasks`` list is passed, any follow-up is appended to
+        it so the schedule automatically rolls forward. Returns the new task (or
+        ``None``).
+        """
+        task.mark_complete()
+        follow_up = task.next_occurrence()
+        if follow_up is not None and tasks is not None:
+            tasks.append(follow_up)
+        return follow_up
 
     def _sort_by_priority(self, tasks: List[Task]) -> List[Task]:
         """Return tasks ordered high→medium→low, stable within a priority."""

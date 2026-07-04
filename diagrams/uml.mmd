@@ -28,14 +28,22 @@ classDiagram
         +string pet_name
         +string frequency
         +bool completed
+        +string time
+        +date due_date
         +__repr__() string
         +mark_complete() void
+        +next_occurrence() Task
     }
-    note for Task "priority is one of: 'low', 'medium', 'high'"
+    note for Task "priority is one of: 'low', 'medium', 'high'; time is 'HH:MM'"
 
     class Scheduler {
         +int available_minutes
         +generate_plan(tasks list~Task~, preferences dict) DailyPlan
+        +sort_by_time(tasks list~Task~) list~Task~
+        +filter_by_pet(tasks list~Task~, pet_name string) list~Task~
+        +filter_by_status(tasks list~Task~, completed bool) list~Task~
+        +detect_conflicts(tasks list~Task~) list~string~
+        +mark_task_complete(task Task, tasks list~Task~) Task
         -sort_by_priority(tasks list~Task~) list~Task~
         -fits_in_remaining_time(task Task, remaining int) bool
     }

@@ -46,8 +46,22 @@ Yes. I asked my AI coding assistant to review the `pawpal_system.py` skeleton fo
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The clearest tradeoff is in **conflict detection** (`Scheduler.detect_conflicts`).
+It only flags tasks that share the *exact same* `"HH:MM"` start time — it does
+**not** account for overlapping durations. A 30-minute "Morning walk" at `08:00`
+and a "Feed breakfast" at `08:15` genuinely collide in the real world, but the
+detector stays silent because their start strings differ. I chose exact-match
+grouping because it's O(n) with a single dictionary pass, trivial to read, and
+returns plain warning strings instead of raising — the program keeps running and
+the owner simply sees a heads-up.
+
+That tradeoff is reasonable for this scenario: PawPal+ is a lightweight personal
+planning aid, not an operating-room scheduler. Pet-care tasks are short and the
+owner is a human who can eyeball a near-miss; the cost of a missed 15-minute
+overlap is low, while the benefit of simple, crash-free, easily-understood code
+is high. Interval-overlap detection (sort by start, compare each task's
+`start + duration` against the next start) would be the natural next step if the
+app ever needed hard, back-to-back time blocking.
 
 ---
 

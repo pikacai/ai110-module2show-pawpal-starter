@@ -87,14 +87,17 @@ tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [100%]
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
+The scheduler goes beyond a flat task list with four algorithmic features. Each
+is a small, single-purpose method on `Scheduler` (see `pawpal_system.py`):
 
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sort_by_time()` | Sorts by "HH:MM" time using a `lambda` key that converts each time to minutes-past-midnight (numeric, not string, comparison). Untimed tasks sort last; stable within a time slot. (`generate_plan` also uses `_sort_by_priority` to place high→medium→low.) |
+| Filtering | `Scheduler.filter_by_pet()`, `Scheduler.filter_by_status()` | Return a task subset by pet name (case-insensitive) or by completion status (done vs. to-do). |
+| Conflict detection | `Scheduler.detect_conflicts()` | Groups tasks by exact `time` and returns a list of warning strings for any shared slot. Lightweight: it warns instead of raising, so the program keeps running. |
+| Recurring tasks | `Task.next_occurrence()`, `Scheduler.mark_task_complete()` | When a "daily"/"weekly" task is completed, a fresh copy is auto-created with `due_date` advanced by `timedelta(days=1)` / `timedelta(weeks=1)`. One-off tasks don't recur. |
+
+Run `python main.py` to see all four exercised in the terminal.
 
 ## 📸 Demo Walkthrough
 
