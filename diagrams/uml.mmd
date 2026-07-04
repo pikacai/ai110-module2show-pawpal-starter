@@ -1,15 +1,58 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
+    %% PawPal+ UML — supports the three core user actions:
+    %% 1) Add a pet and owner profile
+    %% 2) Add a pet care task
+    %% 3) Generate and view today's plan
 
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +string name
+        +dict preferences
+        +list~Pet~ pets
+        +add_pet(pet Pet) void
+        +get_preferences() dict
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +string name
+        +string species
+        +list~Task~ tasks
+        +add_task(task Task) void
+        +get_tasks() list~Task~
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +string title
+        +int duration_minutes
+        +string priority
+        +__repr__() string
+    }
+    note for Task "priority is one of: 'low', 'medium', 'high'"
+
+    class Scheduler {
+        +int available_minutes
+        +generate_plan(tasks list~Task~) DailyPlan
+        -sort_by_priority(tasks list~Task~) list~Task~
+        -fits_in_remaining_time(task Task, remaining int) bool
+    }
+
+    class DailyPlan {
+        +list~ScheduledTask~ scheduled_items
+        +list~Task~ skipped_tasks
+        +int total_minutes_used
+        +explain() string
+        +add_scheduled_task(item ScheduledTask) void
+        +add_skipped_task(task Task, reason string) void
+    }
+
+    class ScheduledTask {
+        +Task task
+        +string start_time
+        +string reasoning
+    }
+
+    Owner "1" --> "many" Pet : owns
+    Pet "1" --> "many" Task : has
+    Scheduler ..> Task : reads
+    Scheduler --> DailyPlan : creates
+    DailyPlan "1" --> "many" ScheduledTask : contains
+    ScheduledTask --> Task : references

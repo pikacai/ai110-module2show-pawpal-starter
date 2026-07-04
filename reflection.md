@@ -2,10 +2,27 @@
 
 ## 1. System Design
 
+**Core user actions**
+
+Before drafting the UML, I identified three core actions a user of PawPal+ should be able to perform:
+
+1. **Add a pet and owner profile** — The user can enter basic owner info (name, preferences) and pet info (name, species) so the system knows who and what it's planning care for.
+2. **Add a pet care task** — The user can add a task (e.g., morning walk, feeding, meds) with a duration and priority, building up the list of things that need to happen that day.
+3. **Generate and view today's plan** — The user can trigger the scheduler to turn the list of tasks into an ordered daily plan that fits the available time and respects priorities, and see the resulting schedule along with the reasoning behind it.
+
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My initial UML (see `diagrams/uml.mmd`) is organized around the three core actions above, with each class owning one responsibility:
+
+- **Owner** — holds the owner's name and preferences, and the list of pets they manage (`add_pet`).
+- **Pet** — holds the pet's name and species, and the list of care tasks for that pet (`add_task`, `get_tasks`).
+- **Priority** — an enum (`LOW`, `MEDIUM`, `HIGH`) so priority is a constrained value instead of a free-text string, which keeps sorting/comparison logic simple later.
+- **Task** — a plain data holder for one piece of care (title, duration in minutes, priority). It doesn't know about scheduling — it just describes "what needs to happen."
+- **Scheduler** — the only class that contains scheduling logic. It takes a list of tasks and the available minutes in the day, sorts by priority, and decides what fits (`generate_plan`, `sort_by_priority`, `fits_in_remaining_time`).
+- **DailyPlan** — the output of the scheduler: an ordered list of `ScheduledTask`s plus any tasks that didn't fit, with an `explain()` method that produces the human-readable reasoning ("why each task was chosen and when it happens").
+- **ScheduledTask** — pairs a `Task` with its assigned start time and a short reasoning string, so the plan can explain itself without the `DailyPlan` needing to re-derive that info.
+
+The split between `Task` (data) and `Scheduler` (behavior) was intentional: it keeps the scheduling algorithm in one place and testable in isolation, rather than scattering "if priority is high, do X" logic across the `Task` or `Pet` classes.
 
 **b. Design changes**
 
