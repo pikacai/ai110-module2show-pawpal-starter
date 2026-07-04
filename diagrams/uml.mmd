@@ -10,6 +10,7 @@ classDiagram
         +list~Pet~ pets
         +add_pet(pet Pet) void
         +get_preferences() dict
+        +get_all_tasks() list~Task~
     }
 
     class Pet {
@@ -24,13 +25,17 @@ classDiagram
         +string title
         +int duration_minutes
         +string priority
+        +string pet_name
+        +string frequency
+        +bool completed
         +__repr__() string
+        +mark_complete() void
     }
     note for Task "priority is one of: 'low', 'medium', 'high'"
 
     class Scheduler {
         +int available_minutes
-        +generate_plan(tasks list~Task~) DailyPlan
+        +generate_plan(tasks list~Task~, preferences dict) DailyPlan
         -sort_by_priority(tasks list~Task~) list~Task~
         -fits_in_remaining_time(task Task, remaining int) bool
     }
@@ -38,6 +43,7 @@ classDiagram
     class DailyPlan {
         +list~ScheduledTask~ scheduled_items
         +list~Task~ skipped_tasks
+        +list~string~ skip_reasons
         +int total_minutes_used
         +explain() string
         +add_scheduled_task(item ScheduledTask) void
@@ -53,6 +59,7 @@ classDiagram
     Owner "1" --> "many" Pet : owns
     Pet "1" --> "many" Task : has
     Scheduler ..> Task : reads
+    Scheduler ..> Owner : reads preferences
     Scheduler --> DailyPlan : creates
     DailyPlan "1" --> "many" ScheduledTask : contains
     ScheduledTask --> Task : references

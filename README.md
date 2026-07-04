@@ -44,14 +44,23 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+Terminal output from running the demo script (`python main.py`). An owner (Sam)
+with two pets and five tasks, scheduled against a 75-minute daily budget:
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+================================================
+Today's Schedule for Sam
+================================================
+Daily Plan — 4 scheduled, 1 skipped, 70 min used
+
+Scheduled:
+  07:30  Morning walk (Rex) [30min] — high priority; placed at 07:30 with 75 min free
+  08:00  Feed breakfast (Rex) [10min] — high priority; placed at 08:00 with 45 min free
+  08:10  Clean litter box (Milo) [10min] — medium priority; placed at 08:10 with 35 min free
+  08:20  Play session (Milo) [20min] — low priority; placed at 08:20 with 25 min free
+
+Skipped:
+  Long afternoon hike (Rex) — needs 90 min but the day only has 75 min total
 ```
 
 ## 🧪 Testing PawPal+
@@ -67,7 +76,13 @@ pytest --cov
 Sample test output:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+collected 2 items
+
+tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [ 50%]
+tests/test_pawpal.py::test_add_task_increases_pet_task_count PASSED      [100%]
+
+============================== 2 passed in 0.01s ===============================
 ```
 
 ## 📐 Smarter Scheduling
